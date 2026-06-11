@@ -223,7 +223,7 @@ const CommentsPage: React.FC = () => {
   const handleApprove = (id: string) => {
     setData(
       data.map((item) =>
-        item.id === id ? { ...item, status: CommentStatus.APPROVED } : item
+        item.id === id ? { ...item, status: CommentStatus.APPROVED, hasSensitiveWord: false, sensitiveWords: [] } : item
       )
     );
     message.success('已通过审核');
@@ -232,7 +232,7 @@ const CommentsPage: React.FC = () => {
   const handleReject = (id: string) => {
     setData(
       data.map((item) =>
-        item.id === id ? { ...item, status: CommentStatus.REJECTED } : item
+        item.id === id ? { ...item, status: CommentStatus.REJECTED, hasSensitiveWord: false, sensitiveWords: [] } : item
       )
     );
     message.success('已拒绝');
@@ -241,7 +241,7 @@ const CommentsPage: React.FC = () => {
   const handleMarkSpam = (id: string) => {
     setData(
       data.map((item) =>
-        item.id === id ? { ...item, status: CommentStatus.SPAM } : item
+        item.id === id ? { ...item, status: CommentStatus.SPAM, hasSensitiveWord: false, sensitiveWords: [] } : item
       )
     );
     message.success('已标记为垃圾评论');
@@ -250,7 +250,7 @@ const CommentsPage: React.FC = () => {
   const handleDelete = (id: string) => {
     setData(
       data.map((item) =>
-        item.id === id ? { ...item, status: CommentStatus.DELETED } : item
+        item.id === id ? { ...item, status: CommentStatus.DELETED, hasSensitiveWord: false, sensitiveWords: [] } : item
       )
     );
     message.success('已删除');
@@ -260,7 +260,7 @@ const CommentsPage: React.FC = () => {
     setData(
       data.map((item) =>
         selectedKeys.includes(item.id)
-          ? { ...item, status: CommentStatus.APPROVED }
+          ? { ...item, status: CommentStatus.APPROVED, hasSensitiveWord: false, sensitiveWords: [] }
           : item
       )
     );

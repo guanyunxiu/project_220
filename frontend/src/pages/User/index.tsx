@@ -200,6 +200,7 @@ const mockSubscriptions: SubscriptionItem[] = [
 
 const menuItems = [
   { key: '', icon: <UserOutlined />, label: '个人中心', path: '' },
+  { key: 'notifications', icon: <BellOutlined />, label: '消息通知', path: 'notifications' },
   { key: 'bookshelf', icon: <BookOutlined />, label: '我的书架', path: 'bookshelf' },
   { key: 'subscriptions', icon: <StarOutlined />, label: '我的订阅', path: 'subscriptions' },
   { key: 'history', icon: <HistoryOutlined />, label: '阅读历史', path: 'history' },
@@ -211,6 +212,16 @@ const { confirm } = Modal;
 
 function UserHome() {
   const user = useAuthStore((s) => s.user) || mockUser;
+  const notifications = useAuthStore((s) => s.notifications);
+  const unreadCount = useAuthStore((s) => s.unreadCount);
+  const markNotificationRead = useAuthStore((s) => s.markNotificationRead);
+  const markAllNotificationsRead = useAuthStore((s) => s.markAllNotificationsRead);
+  const navigate = useNavigate();
+
+  const handleNotifClick = (item: any) => {
+    if (!item.isRead) markNotificationRead(item.id);
+    if (item.relatedUrl) navigate(item.relatedUrl);
+  };
 
   return (
     <div className="space-y-6">
@@ -295,25 +306,64 @@ function UserHome() {
 
         <Col xs={24} md={8}>
           <Card
-            title={<span className="font-semibold flex items-center gap-2"><BellOutlined className="text-red-500" /> 消息通知</span>}
+            title={
+              <span className="font-semibold flex items-center gap-2">
+                <BellOutlined className="text-red-500" /> 消息通知
+                {unreadCount > 0 && (
+                  <Badge count={unreadCount} size="small" offset={[-2, 0]} />
+                )}
+              </span>
+            }
+            extra={
+              unreadCount > 0 ? (
+                <Button type="link" size="small" onClick={() => markAllNotificationsRead()}>
+                  全部已读
+                </Button>
+              ) : null
+            }
             className="!rounded-2xl"
           >
             <List
-              dataSource={[
-                { id: 1, type: 'update', title: '《诸天万界》更新了第528章', time: '10分钟前' },
-                { id: 2, type: 'reward', title: '您的打赏已送达作者', time: '1小时前' },
-                { id: 3, type: 'system', title: '您获得了限时VIP体验券', time: '昨天' },
-                { id: 4, type: 'comment', title: '您的评论收到了3个点赞', time: '2天前' },
-              ]}
-              renderItem={(item) => (
-                <List.Item className="!px-0 !py-3 cursor-pointer hover:bg-gray-50 -mx-3 px-3 rounded-lg transition-colors">
-                  <div className="w-full">
-                    <div className="text-sm">{item.title}</div>
-                    <div className="text-xs text-gray-400 mt-0.5">{item.time}</div>
-                  </div>
-                </List.Item>
-              )}
+              dataSource={notifications.slice(0, 6)}
+              locale={{ emptyText: <Empty description="暂无消息" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
+              renderItem={(item) => {
+                const iconMap: Record<string, string> = {
+                  update: '📖', reward: '💰', system: '🔔', comment: '💬',
+                  reply: '↩️', subscription: '✨', audit: '📋',
+                };
+                return (
+                  <List.Item
+                    className={`!px-0 !py-3 cursor-pointer hover:bg-gray-50 -mx-3 px-3 rounded-lg transition-colors ${
+                      !item.isRead ? 'bg-blue-50/30' : ''
+                    }`}
+                    onClick={() => handleNotifClick(item)}
+                  >
+                    <div className="w-full flex gap-2">
+                      <div className="text-lg shrink-0">{iconMap[item.type] || '📩'}</div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1">
+                          {!item.isRead && <span className="w-1.5 h-1.5 bg-red-500 rounded-full shrink-0" />}
+                          <div className="text-sm truncate">{item.title}</div>
+                        </div>
+                        <div className="text-xs text-gray-500 mt-0.5 truncate">{item.content}</div>
+                        <div className="text-xs text-gray-400 mt-0.5">{dayjs(item.createdAt).fromNow()}</div>
+                      </div>
+                    </div>
+                  </List.Item>
+                );
+              }}
             />
+            {notifications.length > 0 && (
+              <div className="mt-2 pt-2 border-t">
+                <Link
+                  to="notifications"
+                  className="text-sm text-primary-500 hover:underline block text-center"
+                  onClick={() => markAllNotificationsRead()}
+                >
+                  查看全部消息 →
+                </Link>
+              </div>
+            )}
           </Card>
         </Col>
       </Row>
@@ -626,6 +676,137 @@ function RewardsPage() {
   );
 }
 
+function NotificationsPage() {
+  const notifications = useAuthStore((s) => s.notifications);
+  const unreadCount = useAuthStore((s) => s.unreadCount);
+  const markNotificationRead = useAuthStore((s) => s.markNotificationRead);
+  const markAllNotificationsRead = useAuthStore((s) => s.markAllNotificationsRead);
+  const deleteNotification = useAuthStore((s) => s.deleteNotification);
+  const [filter, setFilter] = useState<string>('all');
+  const navigate = useNavigate();
+
+  const filtered = notifications.filter(n => {
+    if (filter === 'all') return true;
+    if (filter === 'unread') return !n.isRead;
+    return n.type === filter;
+  });
+
+  const typeMap: Record<string, { label: string; color: string; icon: string }> = {
+    system: { label: '系统消息', color: 'blue', icon: '🔔' },
+    reward: { label: '打赏消息', color: 'gold', icon: '💰' },
+    comment: { label: '评论消息', color: 'purple', icon: '💬' },
+    reply: { label: '回复消息', color: 'cyan', icon: '↩️' },
+    subscription: { label: '订阅更新', color: 'green', icon: '✨' },
+    audit: { label: '审核通知', color: 'orange', icon: '📋' },
+    update: { label: '作品更新', color: 'geekblue', icon: '📖' },
+  };
+
+  return (
+    <div className="space-y-6">
+      <Card
+        title={<span className="font-semibold flex items-center gap-2"><BellOutlined /> 全部消息</span>}
+        extra={
+          <Space>
+            <Button
+              size="small"
+              onClick={() => setFilter('all')}
+              type={filter === 'all' ? 'primary' : 'default'}
+            >
+              全部 ({notifications.length})
+            </Button>
+            <Button
+              size="small"
+              onClick={() => setFilter('unread')}
+              type={filter === 'unread' ? 'primary' : 'default'}
+            >
+              未读 ({unreadCount})
+            </Button>
+            {unreadCount > 0 && (
+              <Button type="link" size="small" onClick={() => markAllNotificationsRead()}>
+                <CheckOutlined /> 全部已读
+              </Button>
+            )}
+          </Space>
+        }
+        className="!rounded-2xl"
+      >
+        <div className="flex flex-wrap gap-2 mb-4 pb-3 border-b">
+          {Object.entries(typeMap).map(([key, v]) => {
+            const count = notifications.filter(n => n.type === key).length;
+            if (count === 0) return null;
+            return (
+              <Tag.CheckableTag
+                key={key}
+                checked={filter === key}
+                onChange={() => setFilter(filter === key ? 'all' : key)}
+              >
+                {v.icon} {v.label} ({count})
+              </Tag.CheckableTag>
+            );
+          })}
+        </div>
+        <List
+          dataSource={filtered}
+          locale={{ emptyText: <Empty description="暂无消息" /> }}
+          renderItem={(item) => {
+            const meta = typeMap[item.type] || { label: '其他消息', color: 'default', icon: '📩' };
+            return (
+              <List.Item
+                className={`!py-4 cursor-pointer rounded-xl -mx-3 px-4 transition-all ${
+                  !item.isRead ? 'bg-blue-50/40 hover:bg-blue-50/70' : 'hover:bg-gray-50'
+                }`}
+                style={{ marginBottom: 8 }}
+                onClick={() => {
+                  if (!item.isRead) markNotificationRead(item.id);
+                  if (item.relatedUrl) navigate(item.relatedUrl);
+                }}
+                actions={[
+                  <Tooltip key="delete" title="删除消息">
+                    <Button
+                      type="text"
+                      size="small"
+                      danger
+                      icon={<DeleteOutlined />}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteNotification(item.id);
+                      }}
+                    />
+                  </Tooltip>,
+                ]}
+              >
+                <div className="flex gap-4 w-full">
+                  <div className="shrink-0 w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center text-2xl">
+                    {meta.icon}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      {!item.isRead && <span className="w-2 h-2 bg-red-500 rounded-full shrink-0" />}
+                      <Tag color={meta.color}>{meta.label}</Tag>
+                      <span className="text-sm font-medium">{item.title}</span>
+                      <span className="ml-auto text-xs text-gray-400 shrink-0">
+                        {dayjs(item.createdAt).format('YYYY-MM-DD HH:mm')}
+                      </span>
+                    </div>
+                    <div className="text-sm text-gray-600 leading-relaxed">{item.content}</div>
+                    {item.relatedUrl && (
+                      <div className="mt-2">
+                        <Tag color="blue" className="!m-0 !text-xs">
+                          <ArrowRightOutlined /> 点击查看详情
+                        </Tag>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </List.Item>
+            );
+          }}
+        />
+      </Card>
+    </div>
+  );
+}
+
 function SettingsPage() {
   const { user, setUser, logout } = useAuthStore();
   const currentUser = user || mockUser;
@@ -853,6 +1034,7 @@ export default function User() {
           <Route path="subscriptions" element={<SubscriptionsPage />} />
           <Route path="history" element={<HistoryPage />} />
           <Route path="rewards" element={<RewardsPage />} />
+          <Route path="notifications" element={<NotificationsPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/user" replace />} />
         </Routes>

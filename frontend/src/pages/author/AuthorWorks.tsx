@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Card,
@@ -41,46 +41,13 @@ import {
   StarOutlined,
   ClockCircleOutlined,
   UpOutlined,
+  CheckCircleOutlined,
+  CloseCircleOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import { useAuthStore } from '../../store/useAuthStore';
+import { useWorksStore, SharedWork } from '../../store/works';
 import ImageUploader from '../../components/ImageUploader';
-import TipTapEditor from '../../components/TipTapEditor';
-
-interface WorkItem {
-  id: number;
-  title: string;
-  cover: string;
-  category: string;
-  tags: string[];
-  status: 'ongoing' | 'completed' | 'draft';
-  auditStatus: 'pending' | 'approved' | 'rejected';
-  words: number;
-  chapters: number;
-  views: number;
-  favorites: number;
-  income: number;
-  rating: number;
-  updatedAt: string;
-  progress: number;
-}
-
-const mockWorks: WorkItem[] = Array.from({ length: 8 }, (_, i) => ({
-  id: i + 1,
-  title: `我的作品 ${i + 1}：${['诸天之旅', '都市传说', '仙侠奇缘', '末世求生'][i % 4]}`,
-  cover: `https://picsum.photos/seed/authorwork${i}/300/400`,
-  category: ['玄幻奇幻', '都市言情', '武侠仙侠', '科幻游戏'][i % 4],
-  tags: ['爽文', '穿越', '系统'].slice(0, (i % 3) + 1),
-  status: (['ongoing', 'ongoing', 'completed', 'draft'] as const)[i % 4],
-  auditStatus: (['approved', 'approved', 'approved', 'pending'] as const)[i % 4],
-  words: 200000 + i * 150000,
-  chapters: 50 + i * 30,
-  views: 50000 + i * 80000,
-  favorites: 2000 + i * 3000,
-  income: 10000 + i * 8500,
-  rating: 8.5 + i * 0.1,
-  updatedAt: new Date(Date.now() - i * 24 * 3600 * 1000).toISOString(),
-  progress: 20 + i * 10,
-}));
 
 const categories = [
   '玄幻奇幻', '武侠仙侠', '都市言情', '历史军事', '科幻游戏',
@@ -92,27 +59,34 @@ const statusOptions = [
   { value: 'ongoing', label: '连载中' },
   { value: 'completed', label: '已完结' },
   { value: 'draft', label: '草稿箱' },
+  { value: 'pending', label: '待审核' },
+  { value: 'rejected', label: '被驳回' },
 ];
 
 export default function AuthorWorks() {
-  const [data, setData] = useState<WorkItem[]>(mockWorks);
+  const user = useAuthStore((s) => s.user);
+  const addNotification = useAuthStore((s) => s.addNotification);
+  const { works, addWork, updateWork, deleteWork } = useWorksStore();
   const [searchText, setSearchText] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [createModalOpen, setCreateModalOpen] = useState(false);
-  const [editingWork, setEditingWork] = useState<WorkItem | null>(null);
+  const [editingWork, setEditingWork] = useState<SharedWork | null>(null);
   const [form] = Form.useForm();
   const [coverUrl, setCoverUrl] = useState('');
 
-  const filtered = data.filter(
+  const authorId = user?.id ?? 1;
+  const authorWorks = works.filter((w) => w.authorId === authorId);
+
+  const filtered = authorWorks.filter(
     (item) =>
       (!searchText || item.title.includes(searchText)) &&
-      (filterStatus === 'all' || item.status === filterStatus)
+      (filterStatus === 'all' || item.status === filterStatus || item.auditStatus === filterStatus)
   );
 
-  const totalIncome = data.reduce((s, i) => s + i.income, 0);
-  const totalWords = data.reduce((s, i) => s + i.words, 0);
-  const ongoingCount = data.filter((w) => w.status === 'ongoing').length;
-  const totalViews = data.reduce((s, i) => s + i.views, 0);
+  const totalIncome = authorWorks.reduce((s, i) => s + i.income, 0);
+  const totalWords = authorWorks.reduce((s, i) => s + i.words, 0);
+  const ongoingCount = authorWorks.filter((w) => w.status === 'ongoing').length;
+  const totalViews = authorWorks.reduce((s, i) => s + i.views, 0);
 
   const openCreate = () => {
     setEditingWork(null);
@@ -121,14 +95,14 @@ export default function AuthorWorks() {
     setCreateModalOpen(true);
   };
 
-  const openEdit = (work: WorkItem) => {
+  const openEdit = (work: SharedWork) => {
     setEditingWork(work);
     form.setFieldsValue({
       title: work.title,
       category: work.category,
       tags: work.tags,
       status: work.status === 'draft' ? 'ongoing' : work.status,
-      description: `这是${work.title}的作品简介`,
+      description: work.description,
     });
     setCoverUrl(work.cover);
     setCreateModalOpen(true);
@@ -142,34 +116,33 @@ export default function AuthorWorks() {
         return;
       }
       if (editingWork) {
-        setData(
-          data.map((w) =>
-            w.id === editingWork.id
-              ? { ...w, ...values, cover: coverUrl || w.cover }
-              : w
-          )
-        );
+        updateWork(editingWork.id, {
+          ...values,
+          tags: values.tags || [],
+          cover: coverUrl || editingWork.cover,
+        });
         message.success('修改成功');
       } else {
-        const newWork: WorkItem = {
-          id: Date.now(),
+        const newWork = addWork({
           title: values.title,
           cover: coverUrl,
           category: values.category,
           tags: values.tags || [],
           status: values.status || 'draft',
-          auditStatus: 'pending',
-          words: 0,
-          chapters: 0,
-          views: 0,
-          favorites: 0,
-          income: 0,
-          rating: 0,
-          updatedAt: new Date().toISOString(),
-          progress: 0,
-        };
-        setData([newWork, ...data]);
-        message.success('作品创建成功，等待审核');
+          auditStatus: values.status === 'draft' ? 'pending' : 'pending',
+          author: user?.nickname || user?.username || '作者',
+          authorId: authorId,
+          description: values.description,
+          isFeatured: false,
+          isRecommended: false,
+        });
+        addNotification({
+          type: 'audit',
+          title: '作品已提交审核',
+          content: `作品《${newWork.title}》已成功提交审核，平台将在24小时内审核，请耐心等待。`,
+          relatedId: newWork.id,
+        });
+        message.success('作品创建成功，已提交审核');
       }
       setCreateModalOpen(false);
     } catch (e) {
@@ -178,7 +151,7 @@ export default function AuthorWorks() {
   };
 
   const handleDelete = (id: number) => {
-    setData(data.filter((w) => w.id !== id));
+    deleteWork(id);
     message.success('删除成功');
   };
 
@@ -188,10 +161,16 @@ export default function AuthorWorks() {
       dataIndex: 'title',
       key: 'work',
       width: 280,
-      render: (_: any, record: WorkItem) => (
+      render: (_: any, record: SharedWork) => (
         <div className="flex items-center gap-3">
           <div className="w-14 h-20 shrink-0 rounded overflow-hidden bg-gray-100">
-            <img src={record.cover} alt="" className="w-full h-full object-cover" />
+            {record.cover ? (
+              <img src={record.cover} alt="" className="w-full h-full object-cover" />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center text-gray-300">
+                <BookOutlined />
+              </div>
+            )}
           </div>
           <div className="min-w-0 flex-1">
             <Link to={`/work/${record.id}`} className="font-medium truncate max-w-[150px] block hover:text-primary-500">
@@ -218,7 +197,7 @@ export default function AuthorWorks() {
       title: '状态',
       key: 'status',
       width: 160,
-      render: (_: any, r: WorkItem) => (
+      render: (_: any, r: SharedWork) => (
         <Space direction="vertical" size={2}>
           <Tag
             color={
@@ -259,7 +238,7 @@ export default function AuthorWorks() {
       title: '数据',
       key: 'stats',
       width: 180,
-      render: (_: any, r: WorkItem) => (
+      render: (_: any, r: SharedWork) => (
         <div className="text-xs space-y-0.5">
           <div className="flex items-center gap-1">
             <ViewsIcon className="text-blue-500" />
@@ -283,8 +262,8 @@ export default function AuthorWorks() {
       width: 100,
       render: (r: number) => (
         <div>
-          <Rate value={r / 2} disabled count={5} className="!text-xs" />
-          <div className="text-xs text-gray-500 mt-0.5">{r.toFixed(1)}分</div>
+          <Rate value={(r || 0) / 2} disabled count={5} className="!text-xs" />
+          <div className="text-xs text-gray-500 mt-0.5">{r ? r.toFixed(1) : '--'}分</div>
         </div>
       ),
     },
@@ -298,9 +277,9 @@ export default function AuthorWorks() {
     {
       title: '操作',
       key: 'action',
-      width: 200,
+      width: 230,
       fixed: 'right' as const,
-      render: (_: any, r: WorkItem) => (
+      render: (_: any, r: SharedWork) => (
         <Space size="small">
           <Link to={`/author/works/${r.id}/chapters`}>
             <Button type="primary" size="small" icon={<EditOutlined />}>
@@ -315,7 +294,36 @@ export default function AuthorWorks() {
           <Dropdown
             menu={{
               items: [
-                { key: 'edit', icon: <SettingOutlined />, label: '修改信息', onClick: () => openEdit(r) },
+                {
+                  key: 'edit',
+                  icon: <SettingOutlined />,
+                  label: '修改信息',
+                  onClick: () => openEdit(r),
+                },
+                r.auditStatus !== 'approved' && {
+                  key: 'resubmit',
+                  icon: <CheckCircleOutlined />,
+                  label: '重新提交审核',
+                  onClick: () => {
+                    updateWork(r.id, { auditStatus: 'pending', status: 'draft' });
+                    addNotification({
+                      type: 'audit',
+                      title: '重新提交审核',
+                      content: `作品《${r.title}》已重新提交审核。`,
+                      relatedId: r.id,
+                    });
+                    message.success('已重新提交审核');
+                  },
+                },
+                r.auditStatus === 'pending' && {
+                  key: 'withdraw',
+                  icon: <CloseCircleOutlined />,
+                  label: '撤回审核',
+                  onClick: () => {
+                    updateWork(r.id, { auditStatus: 'rejected', status: 'draft' });
+                    message.success('已撤回审核');
+                  },
+                },
                 { type: 'divider' as const },
                 {
                   key: 'delete',
@@ -332,7 +340,7 @@ export default function AuthorWorks() {
                     </Popconfirm>
                   ),
                 },
-              ],
+              ].filter(Boolean) as any[],
             }}
             trigger={['click']}
           >
@@ -436,7 +444,7 @@ export default function AuthorWorks() {
             columns={columns}
             dataSource={filtered}
             rowKey="id"
-            scroll={{ x: 1200 }}
+            scroll={{ x: 1300 }}
             pagination={{
               pageSize: 10,
               showSizeChanger: true,
@@ -451,10 +459,16 @@ export default function AuthorWorks() {
         title={editingWork ? '编辑作品信息' : '创建新作品'}
         open={createModalOpen}
         onCancel={() => setCreateModalOpen(false)}
+        destroyOnHidden
         footer={
           <Space>
             <Button onClick={() => setCreateModalOpen(false)}>取消</Button>
-            <Button onClick={() => { form.setFieldValue('status', 'draft'); handleSubmit(); }}>
+            <Button
+              onClick={() => {
+                form.setFieldValue('status', 'draft');
+                handleSubmit();
+              }}
+            >
               保存草稿
             </Button>
             <Button type="primary" onClick={handleSubmit}>
@@ -463,7 +477,6 @@ export default function AuthorWorks() {
           </Space>
         }
         width={760}
-        destroyOnClose
       >
         <Form form={form} layout="vertical" className="mt-4">
           <Row gutter={16}>
@@ -526,7 +539,10 @@ export default function AuthorWorks() {
                 label="作品分类"
                 rules={[{ required: true, message: '请选择分类' }]}
               >
-                <Select placeholder="请选择分类" options={categories.map((c) => ({ value: c, label: c }))} />
+                <Select
+                  placeholder="请选择分类"
+                  options={categories.map((c) => ({ value: c, label: c }))}
+                />
               </Form.Item>
 
               <Form.Item name="tags" label="标签" tooltip="最多5个标签，便于读者搜索">
@@ -534,18 +550,16 @@ export default function AuthorWorks() {
                   mode="tags"
                   placeholder="输入后回车添加标签"
                   maxTagCount={5}
-                  options={['爽文', '穿越', '系统', '重生', '甜宠', '升级', '无敌流'].map((t) => ({
-                    value: t,
-                    label: t,
-                  }))}
+                  options={['爽文', '穿越', '系统', '重生', '甜宠', '升级', '无敌流'].map(
+                    (t) => ({
+                      value: t,
+                      label: t,
+                    })
+                  )}
                 />
               </Form.Item>
 
-              <Form.Item
-                name="status"
-                label="发布状态"
-                initialValue="ongoing"
-              >
+              <Form.Item name="status" label="发布状态" initialValue="ongoing">
                 <Select
                   options={[
                     { value: 'ongoing', label: '连载中' },
