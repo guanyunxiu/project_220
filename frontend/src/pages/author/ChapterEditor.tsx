@@ -25,6 +25,7 @@ import {
   Row,
   Col,
   Statistic,
+  Switch,
 } from 'antd';
 import {
   ArrowLeftOutlined,

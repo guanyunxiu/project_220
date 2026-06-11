@@ -307,9 +307,11 @@ export default function AuthorWorks() {
               编辑章节
             </Button>
           </Link>
-          <Button type="link" size="small" icon={<EyeOutlined />}>
-            预览
-          </Button>
+          <Link to={`/work/${r.id}`}>
+            <Button type="link" size="small" icon={<EyeOutlined />}>
+              预览
+            </Button>
+          </Link>
           <Dropdown
             menu={{
               items: [
